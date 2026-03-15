@@ -13,15 +13,15 @@ Run these from the repo directory on the Fitlet.
 ```
 
 Expected:
-- Host shows `10.77.0.10` on the torrent-side interface.
-- Default route points at `10.77.0.1`.
-- `/etc/resolv.conf` contains `10.77.0.1`.
+- Host shows `${FITLET_IP}` on the torrent-side interface.
+- Default route points at `${EXPECTED_GATEWAY}`.
+- `/etc/resolv.conf` contains `${EXPECTED_DNS}`.
 - qBittorrent container is running.
 - Public IP is the Proton exit IP, not the ISP IP.
 - Disk space is reasonable for the download target.
 
 Interpretation of failure:
-- Missing `10.77.0.10` usually means DHCP reservation or cable/interface mismatch.
+- Missing `${FITLET_IP}` usually means DHCP reservation or cable/interface mismatch.
 - Wrong resolver suggests DHCP or host override problems.
 - Wrong public IP means stop and validate routing on OPNsense before using the box.
 
@@ -33,11 +33,11 @@ Interpretation of failure:
 
 Expected:
 - Public egress IP matches your expected Proton exit.
-- Resolver inspection shows `10.77.0.1`.
-- DNS query through `10.77.0.1` succeeds.
+- Resolver inspection shows `${EXPECTED_DNS}`.
+- DNS query through `${EXPECTED_DNS}` succeeds.
 - Direct DNS query to `8.8.8.8` fails or times out.
 - Ping to the main LAN target fails or times out.
-- qBittorrent Web UI listener appears on the expected port and only on `10.77.0.10`.
+- qBittorrent Web UI listener appears on the expected port and only on `${FITLET_IP}`.
 
 Interpretation of failure:
 - If direct DNS to `8.8.8.8` works, review OPNsense DNS leak controls.
@@ -50,7 +50,7 @@ Sign into the Web UI and verify:
 - Admin password has been changed from the initial temporary value.
 - `UPnP / NAT-PMP` is disabled.
 - The listening port matches `TORRENTING_PORT`.
-- The network interface or optional bind address points to the torrent-side interface or `10.77.0.10`.
+- The network interface or optional bind address points to the torrent-side interface or `${FITLET_IP}`.
 - Default save path is `/downloads`.
 
 These checks matter because a host can be on the right subnet and still have unsafe application defaults.
@@ -67,9 +67,9 @@ Run packet captures on:
 - TORRENT_NET interface
 
 Expected:
-- WAN capture shows VPN transport only, not raw peer traffic from `10.77.0.10`.
+- WAN capture shows VPN transport only, not raw peer traffic from `${FITLET_IP}`.
 - WireGuard capture shows the expected encapsulated traffic.
-- TORRENT_NET capture shows DNS and NTP to `10.77.0.1` plus ordinary traffic from the Fitlet toward the firewall.
+- TORRENT_NET capture shows DNS and NTP to `${EXPECTED_DNS}` and `${EXPECTED_NTP}` plus ordinary traffic from the Fitlet toward the firewall.
 
 Failure meaning:
 - Any direct peer traffic on WAN is a design failure.
@@ -96,8 +96,8 @@ Failure meaning:
 ### 3. NAT and Rule Review
 
 Confirm:
-- No WAN NAT rule applies to `10.77.0.0/24`.
-- Policy routing really matches `10.77.0.10` or the full torrent subnet, depending on your design.
+- No WAN NAT rule applies to `${EXPECTED_SUBNET}`.
+- Policy routing really matches `${FITLET_IP}` or the full torrent subnet, depending on your design.
 - DNS and NTP are pinned to the firewall.
 - IPv6 is disabled or equally constrained.
 - Main LAN access is blocked.
@@ -106,12 +106,12 @@ Confirm:
 
 You should be able to say yes to all of these before trusting the box:
 - Public IP on the Fitlet is the Proton exit IP, not the ISP IP.
-- DNS resolver on the Fitlet is `10.77.0.1`.
+- DNS resolver on the Fitlet is `${EXPECTED_DNS}`.
 - Direct DNS to `8.8.8.8` fails.
 - LAN access attempts fail.
 - qBittorrent Web UI is reachable only on the expected IP and port.
 - WAN packet capture shows only VPN transport, not peer traffic.
 - Disabling the VPN causes loss of internet for the host.
-- No unexpected NAT rule applies to `10.77.0.0/24`.
+- No unexpected NAT rule applies to `${EXPECTED_SUBNET}`.
 
 If any answer is no, the correct next step is investigation, not rationalization.

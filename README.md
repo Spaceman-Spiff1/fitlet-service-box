@@ -1,6 +1,6 @@
-# fitlet-torrent-box
+# fitlet-service-box
 
-Single-purpose deployment repo for a Fitlet2 torrent acquisition host on Debian 12. This project sets up qBittorrent in Docker on an isolated subnet and assumes OPNsense is already enforcing VPN-only egress, DNS/NTP pinning, LAN isolation, and no-WAN-fallback behavior.
+Single-purpose deployment repo for a Fitlet2 service host on Debian 12. This project sets up qBittorrent in Docker on an isolated subnet and assumes OPNsense is already enforcing VPN-only egress, DNS/NTP pinning, LAN isolation, and no-WAN-fallback behavior.
 
 This host is not the media server. It is an acquisition node only.
 
@@ -12,7 +12,7 @@ Intended protections:
 - Reduce ISP visibility into destination traffic when OPNsense is correctly policy-routed through Proton WireGuard.
 - Reduce accidental WAN leakage by keeping VPN enforcement on OPNsense.
 - Reduce DNS leakage when the firewall pins DNS to its own resolver.
-- Contain the torrent host away from the main LAN.
+- Contain the workload host away from the main LAN.
 - Keep the host easy to rebuild.
 
 Not guaranteed:
@@ -29,9 +29,11 @@ Git is a deployment blueprint, not a complete resurrection spell. Rebuild-first 
 - Hardware: Fitlet2, Intel Atom x7-E3950, 8 GB RAM, 64 GB SSD.
 - OS: Debian 12 minimal.
 - Workload: qBittorrent in Docker Compose.
-- Host IP: `10.77.0.10` via DHCP reservation.
-- Firewall, DNS, and NTP: `10.77.0.1`.
-- Torrent subnet: `10.77.0.0/24` on a dedicated OPNsense interface.
+- Host IP: `${FITLET_IP}` via DHCP reservation.
+- Firewall gateway: `${EXPECTED_GATEWAY}`.
+- DNS: `${EXPECTED_DNS}`.
+- NTP: `${EXPECTED_NTP}`.
+- Isolated service subnet: `${EXPECTED_SUBNET}` on a dedicated OPNsense interface.
 - Egress design: OPNsense terminates Proton WireGuard and policy-routes this host through the VPN.
 
 ## OPNsense Prerequisites
@@ -39,16 +41,16 @@ Git is a deployment blueprint, not a complete resurrection spell. Rebuild-first 
 This repo assumes the firewall side already exists and is working. It does not automate OPNsense.
 
 Required prerequisites:
-- Dedicated `TORRENT_NET` interface on `10.77.0.0/24`.
-- DHCP reservation for the Fitlet at `10.77.0.10`.
-- DNS pinned to OPNsense / AdGuard at `10.77.0.1`.
-- NTP pinned to OPNsense at `10.77.0.1`.
-- No access from `TORRENT_NET` to the main LAN `192.168.1.0/24`.
+- Dedicated `TORRENT_NET` interface on `${EXPECTED_SUBNET}`.
+- DHCP reservation for the Fitlet at `${FITLET_IP}`.
+- DNS pinned to OPNsense / AdGuard at `${EXPECTED_DNS}`.
+- NTP pinned to OPNsense at `${EXPECTED_NTP}`.
+- No access from `TORRENT_NET` to your primary LAN.
 - No access from `TORRENT_NET` to firewall services except required local DNS and NTP.
 - Policy-based routing of this host or subnet through the Proton WireGuard gateway.
 - Gateway switching disabled.
 - State killing enabled on gateway failure.
-- No WAN NAT for `10.77.0.0/24`.
+- No WAN NAT for `${EXPECTED_SUBNET}`.
 - Kill-switch style blocking for non-VPN egress.
 - IPv6 disabled or equivalently controlled.
 
@@ -57,7 +59,7 @@ Packet-level validation on OPNsense is part of the design, not an optional extra
 ## Repo Layout
 
 ```text
-fitlet-torrent-box/
+fitlet-service-box/
 |-- README.md
 |-- .env.example
 |-- .gitignore
@@ -65,12 +67,18 @@ fitlet-torrent-box/
 |-- install.sh
 |-- scripts/
 |   |-- healthcheck.sh
+|   |-- prepare-usb-bundle.sh
 |   |-- verify-routing.sh
 |   |-- backup-config.sh
 |   `-- update-images.sh
+|-- bundle/
+|   `-- README.md
 |-- docs/
+|   |-- LOCAL-VALUES.md (generated on install, not tracked)
 |   |-- OPERATIONS.md
 |   `-- VALIDATION.md
+|-- templates/
+|   `-- LOCAL-VALUES.md.tmpl
 `-- systemd/
     |-- fitlet-healthcheck.service
     |-- fitlet-healthcheck.timer
@@ -80,18 +88,40 @@ fitlet-torrent-box/
 
 ## Install
 
-1. Copy this repo to the Fitlet, for example to `/opt/fitlet-torrent-box`.
-2. Review `.env.example` and create `.env` with your actual values.
-3. Make sure Docker Engine and the Docker Compose plugin are installed from Docker's official Debian repository.
-4. Enable `unattended-upgrades` on the host so Debian security updates keep flowing.
-5. Run:
+If you are installing from a USB drive, treat the USB as the source media only. The installer will stage the repo into `${PROJECT_DIR}` and continue from there so later updates, backups, and local rendered docs do not depend on the USB staying mounted.
+
+### USB Bundle Prep
+
+On an internet-connected Debian 12 machine, run:
+
+```bash
+sudo ./scripts/prepare-usb-bundle.sh
+```
+
+That populates `bundle/` with:
+- helper `.deb` packages used by `install.sh`
+- Docker Engine and Compose plugin `.deb` packages
+- a saved qBittorrent image tarball when Docker is available on the prep machine
+
+Copy the whole repo, including `bundle/`, to the USB drive.
+
+### Fitlet Install
+
+1. Mount the USB drive on the Fitlet and `cd` into the repo on the USB.
+2. Review `.env.example`, copy it to `.env`, and replace every `REPLACE_ME_*` value with your local network details.
+3. Pick an install mode in `.env`:
+   - `INSTALL_MODE=bundle-only` for a no-download USB install
+   - `INSTALL_MODE=auto` to prefer the USB bundle and only download missing pieces
+   - `INSTALL_MODE=online-only` to ignore the USB bundle and install from the network
+4. Run:
 
 ```bash
 sudo chmod +x install.sh scripts/*.sh
 sudo ./install.sh
 ```
 
-6. Open the qBittorrent Web UI at `http://10.77.0.10:8080` from a management network that can reach the torrent subnet.
+5. If the installer created `${PROJECT_DIR}/.env` for the first time, edit it there and rerun `sudo ./install.sh` from `${PROJECT_DIR}`.
+6. After install renders `docs/LOCAL-VALUES.md`, open the qBittorrent Web UI at `http://${FITLET_IP}:${WEBUI_PORT}` from a management network that can reach the torrent subnet.
 
 ## First Login
 
@@ -100,7 +130,7 @@ sudo ./install.sh
 3. In qBittorrent settings, confirm or set the following:
    - Disable `UPnP / NAT-PMP`.
    - Set the listening port to the value from `TORRENTING_PORT`.
-   - Bind qBittorrent to the interface or address for `10.77.0.10`.
+   - Bind qBittorrent to the interface or address for `${FITLET_IP}`.
    - Confirm the default download path matches `/downloads`.
 4. Save settings and restart the container if qBittorrent requests it.
 
@@ -108,11 +138,15 @@ Some qBittorrent settings are safer to verify in the UI than to template blindly
 
 ## Access
 
-- Web UI: `http://10.77.0.10:8080`
-- Torrent port: `49152/tcp` and `49152/udp`
+- Web UI: `http://${FITLET_IP}:${WEBUI_PORT}`
+- Torrent port: `${TORRENTING_PORT}/tcp` and `${TORRENTING_PORT}/udp`
 - Host management: SSH from LAN or existing OpenVPN access to OPNsense only
 
 The compose file binds ports only to `FITLET_IP`, not to all interfaces.
+
+The public repo keeps these values as placeholders on purpose. `install.sh` renders a local [docs/LOCAL-VALUES.md](docs/LOCAL-VALUES.md) file from your `.env` so the deployed host still has concrete, host-specific notes without publishing your exact topology.
+For USB-based installs, that local rendered file lives in `${PROJECT_DIR}/docs/LOCAL-VALUES.md`, not on the removable media.
+When `bundle/` is present, `install.sh` can install helper packages, Docker, and the qBittorrent image without pulling them again from the internet.
 
 ## Security Notes
 

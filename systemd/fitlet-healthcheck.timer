@@ -1,5 +1,5 @@
 [Unit]
-Description=Run Fitlet torrent box health check every 30 minutes
+Description=Run Fitlet service box health check every 30 minutes
 
 [Timer]
 OnBootSec=5m

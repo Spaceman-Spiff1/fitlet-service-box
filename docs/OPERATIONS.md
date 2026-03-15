@@ -4,12 +4,23 @@
 
 Normal workflow should stay boring and predictable:
 - SSH to the Fitlet from your management network.
-- Run `docker compose ps` in the repo directory to confirm service state.
+- Run `docker compose ps` in `${PROJECT_DIR}` to confirm service state.
 - Run `./scripts/healthcheck.sh` for a quick status snapshot.
+- Review `docs/LOCAL-VALUES.md` after install if you want a host-local summary of the actual deployment values.
 - Use the qBittorrent Web UI only from trusted management paths.
 - Keep changes small, documented, and reversible.
 
+If you installed from USB, stop using the USB copy after the initial staging step. Treat `${PROJECT_DIR}` as the canonical working copy on the Fitlet.
+
 Do not treat this host like a general-purpose Debian box. The more extra services and packages you add, the less confidence you can keep in the original threat model.
+
+## USB Bundle
+
+If you rely on USB-based installs or rebuilds:
+- Prepare the bundle on a connected Debian 12 machine with `sudo ./scripts/prepare-usb-bundle.sh`.
+- Copy the refreshed `bundle/` directory to the USB drive along with the repo.
+- Use `INSTALL_MODE=bundle-only` in `.env` when you want to forbid package or image downloads during install.
+- Use `INSTALL_MODE=auto` when the USB bundle is preferred but online fallback is acceptable.
 
 ## Logs To Check
 
@@ -28,9 +39,10 @@ Firewall-side checks still matter more for routing assurance:
 
 1. Review the image tag in `.env` and decide whether you want to move it.
 2. Run `./scripts/update-images.sh`.
-3. Confirm qBittorrent comes back cleanly.
-4. Re-run `./scripts/healthcheck.sh` and `./scripts/verify-routing.sh`.
-5. Re-run OPNsense packet-capture validation if the stack behavior changed.
+3. If you use USB bundles for rebuilds, rerun `sudo ./scripts/prepare-usb-bundle.sh` on your connected prep machine so the bundle matches the new image and package set.
+4. Confirm qBittorrent comes back cleanly.
+5. Re-run `./scripts/healthcheck.sh` and `./scripts/verify-routing.sh`.
+6. Re-run OPNsense packet-capture validation if the stack behavior changed.
 
 Avoid watchtower-style blind auto-updates for this box. A low-maintenance host is not the same thing as an unattended trust leap.
 

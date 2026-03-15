@@ -1,3 +1,6 @@
 .env
 *.tar.gz
 *.log
+docs/LOCAL-VALUES.md
+bundle/*
+!bundle/README.md

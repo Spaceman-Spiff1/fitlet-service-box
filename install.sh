@@ -4,6 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+BUNDLE_DIR="${FITLET_BUNDLE_SOURCE_DIR:-$SCRIPT_DIR/bundle}"
+HELPER_BUNDLE_DIR="${BUNDLE_DIR}/packages/helpers"
+DOCKER_BUNDLE_DIR="${BUNDLE_DIR}/packages/docker"
+IMAGE_BUNDLE_DIR="${BUNDLE_DIR}/images"
+QBITTORRENT_IMAGE_ARCHIVE="${IMAGE_BUNDLE_DIR}/qbittorrent-image.tar"
+
+HELPER_PACKAGES=(curl dnsutils tar jq ca-certificates iproute2 iputils-ping unattended-upgrades)
+DOCKER_PACKAGES=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
+
 log() {
   printf '[install] %s\n' "$*"
 }
@@ -27,17 +36,146 @@ require_root() {
   fi
 }
 
+strip_wrapping_quotes() {
+  local value="$1"
+  value="${value%$'\r'}"
+  if [[ "$value" == \"*\" ]]; then
+    value="${value#\"}"
+    value="${value%\"}"
+  fi
+  if [[ "$value" == \'*\' ]]; then
+    value="${value#\'}"
+    value="${value%\'}"
+  fi
+  printf '%s\n' "$value"
+}
+
+resolve_project_dir() {
+  local env_file raw_value
+  for env_file in "$SCRIPT_DIR/.env" "$SCRIPT_DIR/.env.example"; do
+    if [[ -f "$env_file" ]]; then
+      raw_value="$(grep -m1 '^PROJECT_DIR=' "$env_file" | cut -d'=' -f2- || true)"
+      if [[ -n "$raw_value" ]]; then
+        strip_wrapping_quotes "$raw_value"
+        return 0
+      fi
+    fi
+  done
+  die "Could not determine PROJECT_DIR from .env or .env.example."
+}
+
+stage_project_if_needed() {
+  local target_dir="$1"
+  local reexec_env=("FITLET_STAGE_COMPLETE=1")
+
+  if [[ "$SCRIPT_DIR" == "$target_dir" ]] || [[ "${FITLET_STAGE_COMPLETE:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  log "Staging project from $SCRIPT_DIR to $target_dir"
+  mkdir -p "$target_dir"
+
+  tar \
+    --exclude='.git' \
+    --exclude='.env' \
+    --exclude='docs/LOCAL-VALUES.md' \
+    --exclude='bundle/packages' \
+    --exclude='bundle/images' \
+    --exclude='bundle/manifest.txt' \
+    -cf - \
+    . | tar -xf - -C "$target_dir"
+
+  if [[ -f "$SCRIPT_DIR/.env" && ! -f "$target_dir/.env" ]]; then
+    cp "$SCRIPT_DIR/.env" "$target_dir/.env"
+  fi
+
+  if [[ -d "$SCRIPT_DIR/bundle/packages" || -d "$SCRIPT_DIR/bundle/images" || -f "$SCRIPT_DIR/bundle/manifest.txt" ]]; then
+    reexec_env+=("FITLET_BUNDLE_SOURCE_DIR=$SCRIPT_DIR/bundle")
+  fi
+
+  log "Re-launching installer from $target_dir"
+  exec env "${reexec_env[@]}" bash "$target_dir/install.sh"
+}
+
 load_env() {
   if [[ ! -f .env ]]; then
     log "Creating .env from .env.example"
     cp .env.example .env
-    warn "Review .env before putting this host into service."
+    warn "Review $SCRIPT_DIR/.env and replace every REPLACE_ME_* value before putting this host into service."
   fi
 
   set -a
   # shellcheck disable=SC1091
   source ./.env
   set +a
+}
+
+is_placeholder() {
+  [[ "$1" == REPLACE_ME_* ]]
+}
+
+normalize_install_mode() {
+  INSTALL_MODE="${INSTALL_MODE:-auto}"
+  case "$INSTALL_MODE" in
+    auto|bundle-only|online-only)
+      ;;
+    *)
+      die "Unsupported INSTALL_MODE: $INSTALL_MODE (expected auto, bundle-only, or online-only)"
+      ;;
+  esac
+}
+
+validate_env() {
+  local required_vars=(
+    TZ
+    FITLET_IP
+    EXPECTED_DNS
+    EXPECTED_GATEWAY
+    EXPECTED_NTP
+    EXPECTED_SUBNET
+    LAN_TEST_TARGET
+  )
+  local var_name value missing=()
+
+  for var_name in "${required_vars[@]}"; do
+    value="${!var_name:-}"
+    if [[ -z "$value" ]] || is_placeholder "$value"; then
+      missing+=("$var_name")
+    fi
+  done
+
+  if (( ${#missing[@]} > 0 )); then
+    printf '[install][error] Update .env before install. These values are unset or still placeholders: %s\n' "${missing[*]}" >&2
+    exit 1
+  fi
+}
+
+escape_sed_replacement() {
+  printf '%s' "$1" | sed -e 's/[\/&]/\\&/g'
+}
+
+render_local_values() {
+  local template="$SCRIPT_DIR/templates/LOCAL-VALUES.md.tmpl"
+  local output="$SCRIPT_DIR/docs/LOCAL-VALUES.md"
+
+  [[ -f "$template" ]] || die "Missing template: $template"
+
+  sed \
+    -e "s/__TZ__/$(escape_sed_replacement "$TZ")/g" \
+    -e "s/__FITLET_IP__/$(escape_sed_replacement "$FITLET_IP")/g" \
+    -e "s/__WEBUI_PORT__/$(escape_sed_replacement "$WEBUI_PORT")/g" \
+    -e "s/__TORRENTING_PORT__/$(escape_sed_replacement "$TORRENTING_PORT")/g" \
+    -e "s/__EXPECTED_DNS__/$(escape_sed_replacement "$EXPECTED_DNS")/g" \
+    -e "s/__EXPECTED_GATEWAY__/$(escape_sed_replacement "$EXPECTED_GATEWAY")/g" \
+    -e "s/__EXPECTED_NTP__/$(escape_sed_replacement "$EXPECTED_NTP")/g" \
+    -e "s/__EXPECTED_SUBNET__/$(escape_sed_replacement "$EXPECTED_SUBNET")/g" \
+    -e "s/__LAN_TEST_TARGET__/$(escape_sed_replacement "$LAN_TEST_TARGET")/g" \
+    -e "s#__PROJECT_DIR__#$(escape_sed_replacement "$PROJECT_DIR")#g" \
+    -e "s#__CONFIG_DIR__#$(escape_sed_replacement "$CONFIG_DIR")#g" \
+    -e "s#__DOWNLOADS_DIR__#$(escape_sed_replacement "$DOWNLOADS_DIR")#g" \
+    "$template" > "$output"
+
+  log "Rendered local deployment notes to docs/LOCAL-VALUES.md"
 }
 
 check_os() {
@@ -52,21 +190,167 @@ check_os() {
   fi
 }
 
-install_packages() {
-  local packages=(curl dnsutils tar jq ca-certificates iproute2 iputils-ping unattended-upgrades)
-  log "Installing helper packages: ${packages[*]}"
+has_bundle_packages() {
+  local bundle_path="$1"
+  local debs=()
+  shopt -s nullglob
+  debs=("$bundle_path"/*.deb)
+  shopt -u nullglob
+  (( ${#debs[@]} > 0 ))
+}
+
+install_local_debs() {
+  local label="$1"
+  local bundle_path="$2"
+  local debs=()
+
+  shopt -s nullglob
+  debs=("$bundle_path"/*.deb)
+  shopt -u nullglob
+
+  (( ${#debs[@]} > 0 )) || return 1
+
+  log "Installing ${label} from local bundle in $bundle_path"
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install -y --no-install-recommends "${packages[@]}"
+  apt-get install -y --no-install-recommends "${debs[@]}"
+}
+
+enable_unattended_upgrades() {
   if ! systemctl enable --now unattended-upgrades >/dev/null 2>&1; then
     warn "Unable to enable unattended-upgrades automatically"
   fi
+}
+
+install_helper_packages_online() {
+  log "Installing helper packages from Debian repositories: ${HELPER_PACKAGES[*]}"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y --no-install-recommends "${HELPER_PACKAGES[@]}"
+  enable_unattended_upgrades
+}
+
+install_helper_packages() {
+  case "$INSTALL_MODE" in
+    online-only)
+      install_helper_packages_online
+      ;;
+    bundle-only|auto)
+      if has_bundle_packages "$HELPER_BUNDLE_DIR"; then
+        if install_local_debs "helper packages" "$HELPER_BUNDLE_DIR"; then
+          enable_unattended_upgrades
+          return 0
+        fi
+        if [[ "$INSTALL_MODE" == "bundle-only" ]]; then
+          die "Failed to install helper packages from $HELPER_BUNDLE_DIR"
+        fi
+        warn "Falling back to online helper package install because the local bundle failed"
+      elif [[ "$INSTALL_MODE" == "bundle-only" ]]; then
+        die "INSTALL_MODE=bundle-only but no helper package bundle was found in $HELPER_BUNDLE_DIR"
+      fi
+      install_helper_packages_online
+      ;;
+  esac
+}
+
+add_docker_repo() {
+  local arch codename
+
+  arch="$(dpkg --print-architecture)"
+  codename="${VERSION_CODENAME:-bookworm}"
+
+  install -m 0755 -d /etc/apt/keyrings
+  if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+  fi
+
+  cat > /etc/apt/sources.list.d/docker.list <<EOF
+deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian ${codename} stable
+EOF
+}
+
+install_docker_online() {
+  log "Installing Docker from Docker's official Debian repository"
+  add_docker_repo
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y "${DOCKER_PACKAGES[@]}"
+}
+
+install_docker() {
+  case "$INSTALL_MODE" in
+    online-only)
+      install_docker_online
+      ;;
+    bundle-only|auto)
+      if has_bundle_packages "$DOCKER_BUNDLE_DIR"; then
+        if install_local_debs "Docker packages" "$DOCKER_BUNDLE_DIR"; then
+          return 0
+        fi
+        if [[ "$INSTALL_MODE" == "bundle-only" ]]; then
+          die "Failed to install Docker packages from $DOCKER_BUNDLE_DIR"
+        fi
+        warn "Falling back to online Docker install because the local bundle failed"
+      elif [[ "$INSTALL_MODE" == "bundle-only" ]]; then
+        die "INSTALL_MODE=bundle-only but no Docker package bundle was found in $DOCKER_BUNDLE_DIR"
+      fi
+      install_docker_online
+      ;;
+  esac
 }
 
 check_docker() {
   require_cmd docker
   docker info >/dev/null 2>&1 || die "Docker is installed but not reachable. Is the daemon running?"
   docker compose version >/dev/null 2>&1 || die "Docker Compose plugin is required."
+}
+
+ensure_docker() {
+  if command -v docker >/dev/null 2>&1; then
+    if ! docker info >/dev/null 2>&1; then
+      systemctl enable --now docker >/dev/null 2>&1 || true
+    fi
+    if docker info >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  install_docker
+  if ! systemctl enable --now docker >/dev/null 2>&1; then
+    warn "Unable to enable Docker automatically"
+  fi
+  check_docker
+}
+
+load_bundled_images() {
+  local archives=()
+  shopt -s nullglob
+  archives=("$IMAGE_BUNDLE_DIR"/*.tar)
+  shopt -u nullglob
+
+  (( ${#archives[@]} > 0 )) || return 1
+
+  log "Loading bundled container images from $IMAGE_BUNDLE_DIR"
+  for archive in "${archives[@]}"; do
+    docker load -i "$archive"
+  done
+}
+
+ensure_qbittorrent_image() {
+  if docker image inspect "$QBITTORRENT_IMAGE" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if load_bundled_images && docker image inspect "$QBITTORRENT_IMAGE" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ "$INSTALL_MODE" == "bundle-only" ]]; then
+    die "INSTALL_MODE=bundle-only but image ${QBITTORRENT_IMAGE} is not available locally. Add ${QBITTORRENT_IMAGE_ARCHIVE} to the USB bundle or switch INSTALL_MODE."
+  fi
+
+  log "Pulling image ${QBITTORRENT_IMAGE} from the registry"
+  docker compose pull qbittorrent
 }
 
 create_dirs() {
@@ -96,8 +380,7 @@ network_sanity() {
 }
 
 deploy_stack() {
-  log "Pulling images"
-  docker compose pull
+  ensure_qbittorrent_image
   log "Starting stack"
   docker compose up -d
 }
@@ -108,26 +391,34 @@ print_next_steps() {
 Installation complete.
 
 Next steps:
-1. Review docker status with: docker compose ps
-2. Read qBittorrent startup logs to get the temporary admin password:
+1. Work from ${PROJECT_DIR} for day-to-day administration; the USB copy is no longer required
+2. Review docker status with: docker compose ps
+3. Review docs/LOCAL-VALUES.md for the rendered local deployment summary
+4. Read qBittorrent startup logs to get the temporary admin password:
    docker logs qbittorrent --tail 100
-3. Open the Web UI on http://${FITLET_IP}:${WEBUI_PORT}
-4. Change the admin password immediately
-5. In qBittorrent, disable UPnP/NAT-PMP and confirm the bind address, port, and download path
-6. Run ./scripts/healthcheck.sh and ./scripts/verify-routing.sh
-7. Follow packet-capture validation in docs/VALIDATION.md before trusting the box
+5. Open the Web UI on http://${FITLET_IP}:${WEBUI_PORT}
+6. Change the admin password immediately
+7. In qBittorrent, disable UPnP/NAT-PMP and confirm the bind address, port, and download path
+8. Run ./scripts/healthcheck.sh and ./scripts/verify-routing.sh
+9. Follow packet-capture validation in docs/VALIDATION.md before trusting the box
 EOF
 }
 
 main() {
+  local target_project_dir
   require_root
   check_os
+  target_project_dir="$(resolve_project_dir)"
+  stage_project_if_needed "$target_project_dir"
   require_cmd apt-get
-  install_packages
   load_env
-  check_docker
+  normalize_install_mode
+  install_helper_packages
+  ensure_docker
+  validate_env
   create_dirs
   network_sanity
+  render_local_values
   deploy_stack
   print_next_steps
 }

@@ -12,10 +12,10 @@ if [[ -f .env ]]; then
   set +a
 fi
 
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/fitlet-torrent-box}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/fitlet-service-box}"
 CONFIG_DIR="${CONFIG_DIR:-/srv/qbittorrent/config}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-ARCHIVE="${BACKUP_DIR}/fitlet-torrent-box-${TIMESTAMP}.tar.gz"
+ARCHIVE="${BACKUP_DIR}/fitlet-service-box-${TIMESTAMP}.tar.gz"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -27,8 +27,10 @@ tar \
   .env.example \
   docker-compose.yml \
   install.sh \
+  bundle/README.md \
   scripts \
   docs \
+  templates \
   systemd \
   "$CONFIG_DIR"
 

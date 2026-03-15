@@ -1,5 +1,5 @@
 [Unit]
-Description=Log Fitlet torrent box image status daily
+Description=Log Fitlet service box image status daily
 
 [Timer]
 OnBootSec=15m
