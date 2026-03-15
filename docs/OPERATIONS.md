@@ -49,6 +49,19 @@ Firewall-side checks still matter more for routing assurance:
 Avoid watchtower-style blind auto-updates for this box. A low-maintenance host is not the same thing as an unattended trust leap.
 Remember that membership in the `docker` group is effectively root-equivalent on this host.
 
+## GitHub Checks
+
+If you use pull requests for this repo, wait for the GitHub Actions checks in `.github/workflows/ci.yml` before merging.
+
+Those checks cover:
+- shell linting
+- YAML linting
+- Python linting when Python files exist
+- GitHub workflow linting
+- repo-specific smoke checks with `./scripts/ci-checks.sh`
+
+They are useful guardrails, not a replacement for Fitlet validation or OPNsense packet captures.
+
 If you want the optional timers:
 - Run `install.sh` first so the service files in `systemd/` are rendered with your configured `PROJECT_DIR`.
 - Copy the unit files from `systemd/` into `/etc/systemd/system/`.
