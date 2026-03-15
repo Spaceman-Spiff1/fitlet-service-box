@@ -50,6 +50,16 @@ load_env_like() {
   set +a
 }
 
+ensure_dependency_resolver() {
+  if command -v apt-rdepends >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log "Installing apt-rdepends so package dependency closure can be bundled"
+  apt-get update
+  apt-get install -y --no-install-recommends apt-rdepends
+}
+
 check_os() {
   if [[ -r /etc/os-release ]]; then
     # shellcheck disable=SC1091
@@ -65,15 +75,31 @@ prepare_dirs() {
   rm -f "$HELPER_BUNDLE_DIR"/*.deb "$DOCKER_BUNDLE_DIR"/*.deb "$IMAGE_BUNDLE_DIR"/*.tar "$MANIFEST_FILE"
 }
 
+resolve_package_closure() {
+  apt-rdepends --follow=DEPENDS,PREDEPENDS "$@" 2>/dev/null \
+    | awk '/^[^ ]/ {print $1}' \
+    | grep -Ev '^(<|Depends:|PreDepends:|Conflicts:|Breaks:|Replaces:|Suggests:|Recommends:)$' \
+    | while IFS= read -r package_name; do
+        if apt-cache show "$package_name" >/dev/null 2>&1; then
+          printf '%s\n' "$package_name"
+        fi
+      done \
+    | sort -u
+}
+
 download_package_set() {
   local label="$1"
   local archive_dir="$2"
+  local package_closure=()
   shift 2
 
-  log "Downloading ${label} into ${archive_dir}"
+  mapfile -t package_closure < <(resolve_package_closure "$@")
+  (( ${#package_closure[@]} > 0 )) || die "Could not resolve any packages for ${label}"
+
+  log "Downloading ${label} and dependencies into ${archive_dir}"
   apt-get install --download-only -y --reinstall \
     -o Dir::Cache::archives="${archive_dir}" \
-    "$@"
+    "${package_closure[@]}"
 }
 
 add_docker_repo() {
@@ -124,6 +150,7 @@ main() {
   require_cmd curl
   check_os
   load_env_like
+  ensure_dependency_resolver
   prepare_dirs
 
   log "Refreshing apt metadata"

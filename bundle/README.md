@@ -22,3 +22,5 @@ What goes here:
 - `manifest.txt`: a prep-time summary written by `scripts/prepare-usb-bundle.sh`
 
 These bundle contents are ignored by git on purpose. They belong on the USB drive, not in the public repo history.
+
+During install, the staged copy under `${PROJECT_DIR}` keeps the bundle locally so the USB drive is no longer required after the installer re-launches from the staged repo.

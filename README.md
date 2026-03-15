@@ -78,7 +78,8 @@ fitlet-service-box/
 |   |-- OPERATIONS.md
 |   `-- VALIDATION.md
 |-- templates/
-|   `-- LOCAL-VALUES.md.tmpl
+|   |-- LOCAL-VALUES.md.tmpl
+|   `-- systemd/
 `-- systemd/
     |-- fitlet-healthcheck.service
     |-- fitlet-healthcheck.timer
@@ -88,7 +89,7 @@ fitlet-service-box/
 
 ## Install
 
-If you are installing from a USB drive, treat the USB as the source media only. The installer will stage the repo into `${PROJECT_DIR}` and continue from there so later updates, backups, and local rendered docs do not depend on the USB staying mounted.
+If you are installing from a USB drive, treat the USB as the source media only. The installer stages the repo and the USB bundle into `${PROJECT_DIR}` and continues from there, so the local working copy becomes self-contained.
 
 ### USB Bundle Prep
 
@@ -102,6 +103,8 @@ That populates `bundle/` with:
 - helper `.deb` packages used by `install.sh`
 - Docker Engine and Compose plugin `.deb` packages
 - a saved qBittorrent image tarball when Docker is available on the prep machine
+
+The prep script resolves package dependency closure so `INSTALL_MODE=bundle-only` is aimed at a fresh Debian 12 target, not just the prep machine's already-installed state.
 
 Copy the whole repo, including `bundle/`, to the USB drive.
 
@@ -121,7 +124,8 @@ sudo ./install.sh
 ```
 
 5. If the installer created `${PROJECT_DIR}/.env` for the first time, edit it there and rerun `sudo ./install.sh` from `${PROJECT_DIR}`.
-6. After install renders `docs/LOCAL-VALUES.md`, open the qBittorrent Web UI at `http://${FITLET_IP}:${WEBUI_PORT}` from a management network that can reach the torrent subnet.
+6. After staging completes, the install runs from `${PROJECT_DIR}` and no longer depends on the USB staying mounted.
+7. After install renders `docs/LOCAL-VALUES.md`, open the qBittorrent Web UI at `http://${FITLET_IP}:${WEBUI_PORT}` from a management network that can reach the isolated subnet.
 
 ## First Login
 
@@ -147,6 +151,7 @@ The compose file binds ports only to `FITLET_IP`, not to all interfaces.
 The public repo keeps these values as placeholders on purpose. `install.sh` renders a local [docs/LOCAL-VALUES.md](docs/LOCAL-VALUES.md) file from your `.env` so the deployed host still has concrete, host-specific notes without publishing your exact topology.
 For USB-based installs, that local rendered file lives in `${PROJECT_DIR}/docs/LOCAL-VALUES.md`, not on the removable media.
 When `bundle/` is present, `install.sh` can install helper packages, Docker, and the qBittorrent image without pulling them again from the internet.
+`install.sh` also renders the optional systemd service files in `systemd/` so they match your configured `PROJECT_DIR`.
 
 ## Security Notes
 

@@ -21,6 +21,7 @@ If you rely on USB-based installs or rebuilds:
 - Copy the refreshed `bundle/` directory to the USB drive along with the repo.
 - Use `INSTALL_MODE=bundle-only` in `.env` when you want to forbid package or image downloads during install.
 - Use `INSTALL_MODE=auto` when the USB bundle is preferred but online fallback is acceptable.
+- The staged copy under `${PROJECT_DIR}` keeps the bundle locally, so the USB drive is not needed after the installer re-launches from the staged repo.
 
 ## Logs To Check
 
@@ -47,6 +48,7 @@ Firewall-side checks still matter more for routing assurance:
 Avoid watchtower-style blind auto-updates for this box. A low-maintenance host is not the same thing as an unattended trust leap.
 
 If you want the optional timers:
+- Run `install.sh` first so the service files in `systemd/` are rendered with your configured `PROJECT_DIR`.
 - Copy the unit files from `systemd/` into `/etc/systemd/system/`.
 - Run `sudo systemctl daemon-reload`.
 - Enable them with `sudo systemctl enable --now fitlet-healthcheck.timer fitlet-update-notify.timer`.

@@ -66,7 +66,6 @@ resolve_project_dir() {
 
 stage_project_if_needed() {
   local target_dir="$1"
-  local reexec_env=("FITLET_STAGE_COMPLETE=1")
 
   if [[ "$SCRIPT_DIR" == "$target_dir" ]] || [[ "${FITLET_STAGE_COMPLETE:-0}" == "1" ]]; then
     return 0
@@ -79,9 +78,6 @@ stage_project_if_needed() {
     --exclude='.git' \
     --exclude='.env' \
     --exclude='docs/LOCAL-VALUES.md' \
-    --exclude='bundle/packages' \
-    --exclude='bundle/images' \
-    --exclude='bundle/manifest.txt' \
     -cf - \
     . | tar -xf - -C "$target_dir"
 
@@ -89,12 +85,8 @@ stage_project_if_needed() {
     cp "$SCRIPT_DIR/.env" "$target_dir/.env"
   fi
 
-  if [[ -d "$SCRIPT_DIR/bundle/packages" || -d "$SCRIPT_DIR/bundle/images" || -f "$SCRIPT_DIR/bundle/manifest.txt" ]]; then
-    reexec_env+=("FITLET_BUNDLE_SOURCE_DIR=$SCRIPT_DIR/bundle")
-  fi
-
   log "Re-launching installer from $target_dir"
-  exec env "${reexec_env[@]}" bash "$target_dir/install.sh"
+  exec env FITLET_STAGE_COMPLETE=1 bash "$target_dir/install.sh"
 }
 
 load_env() {
@@ -178,6 +170,23 @@ render_local_values() {
   log "Rendered local deployment notes to docs/LOCAL-VALUES.md"
 }
 
+render_systemd_units() {
+  local template_dir="$SCRIPT_DIR/templates/systemd"
+  local output_dir="$SCRIPT_DIR/systemd"
+  local file template output
+
+  for file in fitlet-healthcheck.service fitlet-update-notify.service; do
+    template="$template_dir/${file}.tmpl"
+    output="$output_dir/${file}"
+    [[ -f "$template" ]] || die "Missing systemd template: $template"
+    sed \
+      -e "s#__PROJECT_DIR__#$(escape_sed_replacement "$PROJECT_DIR")#g" \
+      "$template" > "$output"
+  done
+
+  log "Rendered optional systemd unit files with PROJECT_DIR=${PROJECT_DIR}"
+}
+
 check_os() {
   if [[ -r /etc/os-release ]]; then
     # shellcheck disable=SC1091
@@ -203,6 +212,7 @@ install_local_debs() {
   local label="$1"
   local bundle_path="$2"
   local debs=()
+  local apt_flags=(-y --no-install-recommends)
 
   shopt -s nullglob
   debs=("$bundle_path"/*.deb)
@@ -210,9 +220,13 @@ install_local_debs() {
 
   (( ${#debs[@]} > 0 )) || return 1
 
+  if [[ "$INSTALL_MODE" == "bundle-only" ]]; then
+    apt_flags+=(--no-download)
+  fi
+
   log "Installing ${label} from local bundle in $bundle_path"
   export DEBIAN_FRONTEND=noninteractive
-  apt-get install -y --no-install-recommends "${debs[@]}"
+  apt-get install "${apt_flags[@]}" "${debs[@]}"
 }
 
 enable_unattended_upgrades() {
@@ -413,12 +427,13 @@ main() {
   require_cmd apt-get
   load_env
   normalize_install_mode
+  validate_env
   install_helper_packages
   ensure_docker
-  validate_env
   create_dirs
   network_sanity
   render_local_values
+  render_systemd_units
   deploy_stack
   print_next_steps
 }
