@@ -35,7 +35,14 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           title="fitlet-service-box ${tag}"
-          notes="GitHub-built installer assets for ${tag}. The release installer contains the repo source from git. Pair it with a sidecar .env and optional bundle/ directory on USB if you want host-specific settings or offline install payloads."
+          notes=$(cat <<EOF
+          GitHub-built installer assets for ${tag}.
+
+          The release installer contains the repo source from git.
+          Pair it with a sidecar .env and optional bundle/ directory on USB
+          if you want host-specific settings or offline install payloads.
+          EOF
+          )
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" dist/* --repo "$GITHUB_REPOSITORY" --clobber
