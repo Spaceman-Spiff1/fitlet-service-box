@@ -2,5 +2,6 @@
 *.tar.gz
 *.log
 docs/LOCAL-VALUES.md
+dist/
 bundle/*
 !bundle/README.md

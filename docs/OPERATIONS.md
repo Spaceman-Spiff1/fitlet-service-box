@@ -56,12 +56,24 @@ If you use pull requests for this repo, wait for the GitHub Actions checks in `.
 Those checks cover:
 - shell linting
 - a GitHub-hosted Docker/image startup smoke test
+- installer package creation and extraction checks
 - YAML linting
 - Python linting when Python files exist
 - GitHub workflow linting
 - repo-specific smoke checks with `./scripts/ci-checks.sh`
 
 They are useful guardrails, not a replacement for Fitlet validation or OPNsense packet captures.
+
+If you want a downloadable installer package from GitHub:
+- Tag a release like `v1.0.0` and push the tag.
+- Wait for `.github/workflows/release.yml` to complete.
+- Download the `.run`, `.tar.gz`, or `.sha256` assets from the GitHub Release page.
+- For a USB install, place your `.env` and optional `bundle/` directory beside the `.run` file.
+
+If you want to build installer artifacts locally instead of waiting for a tagged release:
+- Run `bash ./scripts/build-installer.sh --version local`
+- Add `--include-bundle` if you want to embed local `bundle/` contents into the installer itself
+- Use the generated files under `dist/`
 
 If you want the optional timers:
 - Run `install.sh` first so the service files in `systemd/` are rendered with your configured `PROJECT_DIR`.

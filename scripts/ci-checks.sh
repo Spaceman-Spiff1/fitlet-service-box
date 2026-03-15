@@ -48,6 +48,7 @@ required_files=(
   docs/OPERATIONS.md
   docs/VALIDATION.md
   scripts/backup-config.sh
+  scripts/build-installer.sh
   scripts/ci-checks.sh
   scripts/docker-smoke-test.sh
   scripts/healthcheck.sh
@@ -55,6 +56,7 @@ required_files=(
   scripts/update-images.sh
   scripts/verify-routing.sh
   .github/workflows/ci.yml
+  .github/workflows/release.yml
 )
 
 for file_path in "${required_files[@]}"; do

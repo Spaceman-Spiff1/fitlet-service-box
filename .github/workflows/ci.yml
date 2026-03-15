@@ -48,6 +48,35 @@ jobs:
       - name: Run docker/image smoke test
         run: ./scripts/docker-smoke-test.sh
 
+  package-build:
+    name: Package Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v5
+
+      - name: Build installer artifacts
+        run: bash ./scripts/build-installer.sh --version ci
+
+      - name: Validate packaged artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x ./dist/fitlet-service-box-installer-ci.run
+          test -f ./dist/fitlet-service-box-installer-ci.tar.gz
+          test -f ./dist/fitlet-service-box-installer-ci.sha256
+          (
+            cd ./dist
+            sha256sum -c fitlet-service-box-installer-ci.sha256
+          )
+          extract_root="$(mktemp -d)"
+          repo_dir="$(./dist/fitlet-service-box-installer-ci.run --extract-only --target-dir "$extract_root")"
+          test -f "$repo_dir/install.sh"
+          test -f "$repo_dir/docker-compose.yml"
+          test -f "$repo_dir/.env.example"
+          tar -tzf ./dist/fitlet-service-box-installer-ci.tar.gz | grep -q '^fitlet-service-box/install.sh$'
+
   yamllint:
     name: YAML Lint
     runs-on: ubuntu-latest

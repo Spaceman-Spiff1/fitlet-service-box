@@ -1,0 +1,44 @@
+name: Release
+
+"on":
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-release:
+    name: Build And Publish Release Assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v5
+
+      - name: Build installer artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./scripts/build-installer.sh --version "${GITHUB_REF_NAME}"
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          title="fitlet-service-box ${tag}"
+          notes="GitHub-built installer assets for ${tag}. The release installer contains the repo source from git. Pair it with a sidecar .env and optional bundle/ directory on USB if you want host-specific settings or offline install payloads."
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" dist/* --repo "$GITHUB_REPOSITORY" --title "$title" --notes "$notes"
+          fi

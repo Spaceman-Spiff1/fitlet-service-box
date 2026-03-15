@@ -24,3 +24,4 @@ What goes here:
 These bundle contents are ignored by git on purpose. They belong on the USB drive, not in the public repo history.
 
 During install, the staged copy under `${PROJECT_DIR}` keeps the bundle locally so the USB drive is no longer required after the installer re-launches from the staged repo.
+If you are using a GitHub release installer, place this `bundle/` directory next to the `.run` file on the USB drive so the installer can copy it into its extracted workspace before `install.sh` starts.
