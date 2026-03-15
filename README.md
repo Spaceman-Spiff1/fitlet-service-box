@@ -1,5 +1,7 @@
 # fitlet-service-box
 
+[![CI](https://github.com/Spaceman-Spiff1/fitlet-service-box/actions/workflows/ci.yml/badge.svg)](https://github.com/Spaceman-Spiff1/fitlet-service-box/actions/workflows/ci.yml)
+
 Single-purpose deployment repo for a Fitlet2 service host on Debian 12. This project sets up qBittorrent in Docker on an isolated subnet and assumes OPNsense is already enforcing VPN-only egress, DNS/NTP pinning, LAN isolation, and no-WAN-fallback behavior.
 
 This host is not the media server. It is an acquisition node only.
