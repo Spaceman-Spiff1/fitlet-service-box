@@ -125,7 +125,9 @@ sudo ./install.sh
 
 5. If the installer created `${PROJECT_DIR}/.env` for the first time, edit it there and rerun `sudo ./install.sh` from `${PROJECT_DIR}`.
 6. After staging completes, the install runs from `${PROJECT_DIR}` and no longer depends on the USB staying mounted.
-7. After install renders `docs/LOCAL-VALUES.md`, open the qBittorrent Web UI at `http://${FITLET_IP}:${WEBUI_PORT}` from a management network that can reach the isolated subnet.
+7. When install is run with `sudo` from a normal admin account, it adds that account to the `docker` group so routine `docker compose` commands do not require `sudo`.
+8. Log out and back in, or run `newgrp docker`, before using Docker commands without `sudo`.
+9. After install renders `docs/LOCAL-VALUES.md`, open the qBittorrent Web UI at `http://${FITLET_IP}:${WEBUI_PORT}` from a management network that can reach the isolated subnet.
 
 ## First Login
 
@@ -156,6 +158,7 @@ When `bundle/` is present, `install.sh` can install helper packages, Docker, and
 ## Security Notes
 
 - Docker is used for packaging and service management, not as a hard security boundary.
+- The `docker` group is effectively root-equivalent. This repo uses it for day-to-day admin convenience, not because it is a security boundary.
 - This design reduces ISP observability when the firewall is configured correctly, but it does not provide tracker or swarm anonymity.
 - The VPN provider remains a trust dependency.
 - If OPNsense is wrong, the host cannot compensate for it.

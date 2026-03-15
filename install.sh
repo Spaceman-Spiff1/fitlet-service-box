@@ -9,6 +9,7 @@ HELPER_BUNDLE_DIR="${BUNDLE_DIR}/packages/helpers"
 DOCKER_BUNDLE_DIR="${BUNDLE_DIR}/packages/docker"
 IMAGE_BUNDLE_DIR="${BUNDLE_DIR}/images"
 QBITTORRENT_IMAGE_ARCHIVE="${IMAGE_BUNDLE_DIR}/qbittorrent-image.tar"
+DOCKER_GROUP_CHANGED=0
 
 HELPER_PACKAGES=(curl dnsutils tar jq ca-certificates iproute2 iputils-ping unattended-upgrades)
 DOCKER_PACKAGES=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
@@ -106,6 +107,43 @@ is_placeholder() {
   [[ "$1" == REPLACE_ME_* ]]
 }
 
+is_integer() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+is_valid_port() {
+  is_integer "$1" && (( $1 >= 1 && $1 <= 65535 ))
+}
+
+is_ipv4() {
+  local candidate="$1"
+  local octets=()
+  local octet
+
+  IFS='.' read -r -a octets <<<"$candidate"
+  [[ ${#octets[@]} -eq 4 ]] || return 1
+
+  for octet in "${octets[@]}"; do
+    is_integer "$octet" || return 1
+    (( octet >= 0 && octet <= 255 )) || return 1
+  done
+}
+
+is_ipv4_cidr() {
+  local candidate="$1"
+  local network prefix
+
+  IFS='/' read -r network prefix <<<"$candidate"
+  [[ -n "$network" && -n "$prefix" ]] || return 1
+  is_ipv4 "$network" || return 1
+  is_integer "$prefix" || return 1
+  (( prefix >= 0 && prefix <= 32 ))
+}
+
+is_absolute_path() {
+  [[ "$1" == /* ]]
+}
+
 normalize_install_mode() {
   INSTALL_MODE="${INSTALL_MODE:-auto}"
   case "$INSTALL_MODE" in
@@ -120,12 +158,21 @@ normalize_install_mode() {
 validate_env() {
   local required_vars=(
     TZ
+    PUID
+    PGID
     FITLET_IP
+    WEBUI_PORT
+    TORRENTING_PORT
+    CONFIG_DIR
+    DOWNLOADS_DIR
+    PROJECT_DIR
+    QBITTORRENT_IMAGE
     EXPECTED_DNS
     EXPECTED_GATEWAY
     EXPECTED_NTP
     EXPECTED_SUBNET
     LAN_TEST_TARGET
+    BACKUP_DIR
   )
   local var_name value missing=()
 
@@ -140,6 +187,24 @@ validate_env() {
     printf '[install][error] Update .env before install. These values are unset or still placeholders: %s\n' "${missing[*]}" >&2
     exit 1
   fi
+
+  is_integer "$PUID" || die "PUID must be a numeric UID. Current value: ${PUID}"
+  is_integer "$PGID" || die "PGID must be a numeric GID. Current value: ${PGID}"
+  is_valid_port "$WEBUI_PORT" || die "WEBUI_PORT must be an integer between 1 and 65535. Current value: ${WEBUI_PORT}"
+  is_valid_port "$TORRENTING_PORT" || die "TORRENTING_PORT must be an integer between 1 and 65535. Current value: ${TORRENTING_PORT}"
+  [[ "$WEBUI_PORT" != "$TORRENTING_PORT" ]] || die "WEBUI_PORT and TORRENTING_PORT must not be the same value."
+
+  is_ipv4 "$FITLET_IP" || die "FITLET_IP must be a valid IPv4 address. Current value: ${FITLET_IP}"
+  is_ipv4 "$EXPECTED_DNS" || die "EXPECTED_DNS must be a valid IPv4 address. Current value: ${EXPECTED_DNS}"
+  is_ipv4 "$EXPECTED_GATEWAY" || die "EXPECTED_GATEWAY must be a valid IPv4 address. Current value: ${EXPECTED_GATEWAY}"
+  is_ipv4 "$EXPECTED_NTP" || die "EXPECTED_NTP must be a valid IPv4 address. Current value: ${EXPECTED_NTP}"
+  is_ipv4 "$LAN_TEST_TARGET" || die "LAN_TEST_TARGET must be a valid IPv4 address. Current value: ${LAN_TEST_TARGET}"
+  is_ipv4_cidr "$EXPECTED_SUBNET" || die "EXPECTED_SUBNET must be an IPv4 CIDR like 10.0.0.0/24. Current value: ${EXPECTED_SUBNET}"
+
+  is_absolute_path "$PROJECT_DIR" || die "PROJECT_DIR must be an absolute path. Current value: ${PROJECT_DIR}"
+  is_absolute_path "$CONFIG_DIR" || die "CONFIG_DIR must be an absolute path. Current value: ${CONFIG_DIR}"
+  is_absolute_path "$DOWNLOADS_DIR" || die "DOWNLOADS_DIR must be an absolute path. Current value: ${DOWNLOADS_DIR}"
+  is_absolute_path "$BACKUP_DIR" || die "BACKUP_DIR must be an absolute path. Current value: ${BACKUP_DIR}"
 }
 
 escape_sed_replacement() {
@@ -336,6 +401,31 @@ ensure_docker() {
   check_docker
 }
 
+ensure_admin_docker_access() {
+  local admin_user="${SUDO_USER:-}"
+
+  if [[ -z "$admin_user" || "$admin_user" == "root" ]]; then
+    warn "Install was not started via sudo from a non-root admin account. Add your normal admin user to the docker group manually if you want day-to-day docker access without sudo."
+    return 0
+  fi
+
+  if ! getent group docker >/dev/null 2>&1; then
+    warn "The docker group does not exist yet, so the installer could not grant day-to-day docker access to ${admin_user}."
+    return 0
+  fi
+
+  if id -nG "$admin_user" | tr ' ' '\n' | grep -Fxq docker; then
+    return 0
+  fi
+
+  if usermod -aG docker "$admin_user"; then
+    DOCKER_GROUP_CHANGED=1
+    log "Added ${admin_user} to the docker group for day-to-day administration"
+  else
+    warn "Unable to add ${admin_user} to the docker group automatically"
+  fi
+}
+
 load_bundled_images() {
   local archives=()
   shopt -s nullglob
@@ -400,6 +490,12 @@ deploy_stack() {
 }
 
 print_next_steps() {
+  local docker_group_note=""
+
+  if (( DOCKER_GROUP_CHANGED == 1 )); then
+    docker_group_note=$'\n10. Log out and back in (or run newgrp docker) before using docker commands without sudo\n11. Remember that docker group access is effectively root-equivalent on this host'
+  fi
+
   cat <<EOF
 
 Installation complete.
@@ -415,6 +511,7 @@ Next steps:
 7. In qBittorrent, disable UPnP/NAT-PMP and confirm the bind address, port, and download path
 8. Run ./scripts/healthcheck.sh and ./scripts/verify-routing.sh
 9. Follow packet-capture validation in docs/VALIDATION.md before trusting the box
+${docker_group_note}
 EOF
 }
 
@@ -430,6 +527,7 @@ main() {
   validate_env
   install_helper_packages
   ensure_docker
+  ensure_admin_docker_access
   create_dirs
   network_sanity
   render_local_values

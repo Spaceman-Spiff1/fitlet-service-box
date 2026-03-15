@@ -11,6 +11,7 @@ Normal workflow should stay boring and predictable:
 - Keep changes small, documented, and reversible.
 
 If you installed from USB, stop using the USB copy after the initial staging step. Treat `${PROJECT_DIR}` as the canonical working copy on the Fitlet.
+If `install.sh` added your account to the `docker` group, log out and back in before expecting `docker compose` to work without `sudo`.
 
 Do not treat this host like a general-purpose Debian box. The more extra services and packages you add, the less confidence you can keep in the original threat model.
 
@@ -46,6 +47,7 @@ Firewall-side checks still matter more for routing assurance:
 6. Re-run OPNsense packet-capture validation if the stack behavior changed.
 
 Avoid watchtower-style blind auto-updates for this box. A low-maintenance host is not the same thing as an unattended trust leap.
+Remember that membership in the `docker` group is effectively root-equivalent on this host.
 
 If you want the optional timers:
 - Run `install.sh` first so the service files in `systemd/` are rendered with your configured `PROJECT_DIR`.

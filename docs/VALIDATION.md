@@ -34,10 +34,12 @@ Interpretation of failure:
 Expected:
 - Public egress IP matches your expected Proton exit.
 - Resolver inspection shows `${EXPECTED_DNS}`.
+- Default gateway shows `${EXPECTED_GATEWAY}`.
 - DNS query through `${EXPECTED_DNS}` succeeds.
 - Direct DNS query to `8.8.8.8` fails or times out.
 - Ping to the main LAN target fails or times out.
 - qBittorrent Web UI listener appears on the expected port and only on `${FITLET_IP}`.
+- qBittorrent torrent TCP and UDP listeners appear on `${TORRENTING_PORT}` without wildcard binds.
 
 Interpretation of failure:
 - If direct DNS to `8.8.8.8` works, review OPNsense DNS leak controls.

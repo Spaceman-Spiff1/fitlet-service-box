@@ -132,11 +132,20 @@ save_qbittorrent_image() {
 }
 
 write_manifest() {
+  local helper_count docker_count image_count
+
+  helper_count="$(find "$HELPER_BUNDLE_DIR" -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d '[:space:]')"
+  docker_count="$(find "$DOCKER_BUNDLE_DIR" -maxdepth 1 -type f -name '*.deb' | wc -l | tr -d '[:space:]')"
+  image_count="$(find "$IMAGE_BUNDLE_DIR" -maxdepth 1 -type f -name '*.tar' | wc -l | tr -d '[:space:]')"
+
   {
     printf 'Prepared: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf 'Repo: fitlet-service-box\n'
     printf 'Image: %s\n' "${QBITTORRENT_IMAGE}"
     printf 'Install modes supported: auto, bundle-only, online-only\n'
+    printf 'Helper package files: %s\n' "$helper_count"
+    printf 'Docker package files: %s\n' "$docker_count"
+    printf 'Image archives: %s\n' "$image_count"
     printf '\nHelper packages:\n'
     printf '  - %s\n' "${HELPER_PACKAGES[@]}"
     printf '\nDocker packages:\n'

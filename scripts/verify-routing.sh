@@ -13,8 +13,11 @@ if [[ -f .env ]]; then
 fi
 
 EXPECTED_DNS="${EXPECTED_DNS:-REPLACE_ME_DNS_IP}"
+EXPECTED_GATEWAY="${EXPECTED_GATEWAY:-REPLACE_ME_GATEWAY_IP}"
 LAN_TEST_TARGET="${LAN_TEST_TARGET:-REPLACE_ME_LAN_TEST_TARGET}"
 FITLET_IP="${FITLET_IP:-REPLACE_ME_FITLET_IP}"
+WEBUI_PORT="${WEBUI_PORT:-8080}"
+TORRENTING_PORT="${TORRENTING_PORT:-49152}"
 PUBLIC_IP_CHECK_URL="${PUBLIC_IP_CHECK_URL:-https://ifconfig.me}"
 
 is_placeholder() {
@@ -33,14 +36,62 @@ info() {
   printf '[info] %s\n' "$1"
 }
 
-run_maybe() {
+collect_listener_addresses() {
+  local port="$1"
+  local protocol_filter="${2:-any}"
+
+  ss -H -lntup 2>/dev/null | awk -v port="$port" -v protocol_filter="$protocol_filter" '
+    $5 ~ ":" port "$" && (protocol_filter == "any" || $1 == protocol_filter) {print $1 "|" $5}
+  '
+}
+
+report_listener_check() {
   local label="$1"
-  shift
-  printf '\n%s\n' "-- ${label} --"
-  if "$@"; then
-    pass "${label} succeeded"
+  local port="$2"
+  local protocol_filter="${3:-any}"
+  local listeners=()
+  local listener_line protocol address
+  local saw_expected=0
+  local saw_wildcard=0
+
+  mapfile -t listeners < <(collect_listener_addresses "$port" "$protocol_filter")
+
+  printf '\n-- %s --\n' "$label"
+  if (( ${#listeners[@]} == 0 )); then
+    if [[ "$protocol_filter" == "any" ]]; then
+      warn "Nothing appears to be listening on port ${port}"
+    else
+      warn "Nothing appears to be listening on ${protocol_filter} port ${port}"
+    fi
+    return 0
+  fi
+
+  printf 'Observed listeners:\n'
+  for listener_line in "${listeners[@]}"; do
+    IFS='|' read -r protocol address <<<"$listener_line"
+    printf '  - %s %s\n' "$protocol" "$address"
+
+    case "$address" in
+      "${FITLET_IP}:${port}"|"[::ffff:${FITLET_IP}]:${port}")
+        saw_expected=1
+        ;;
+      "*:${port}"|"0.0.0.0:${port}"|"[::]:${port}"|":::${port}")
+        saw_wildcard=1
+        ;;
+    esac
+  done
+
+  if is_placeholder "$FITLET_IP"; then
+    warn "FITLET_IP is still a placeholder in .env. Update it before using listener binding checks as an acceptance test."
+    return 0
+  fi
+
+  if (( saw_expected == 1 && saw_wildcard == 0 )); then
+    pass "${label} is bound only to ${FITLET_IP}:${port}"
+  elif (( saw_expected == 1 )); then
+    warn "${label} includes the expected bind but also appears on a wildcard listener. Review qBittorrent bind settings."
   else
-    warn "${label} failed"
+    warn "${label} is not bound to ${FITLET_IP}:${port}. Review qBittorrent bind settings before trusting the host."
   fi
 }
 
@@ -68,6 +119,19 @@ elif [[ -r /etc/resolv.conf ]]; then
   fi
 else
   warn "Cannot read /etc/resolv.conf"
+fi
+
+printf '\n-- Default gateway inspection --\n'
+if is_placeholder "$EXPECTED_GATEWAY"; then
+  warn "EXPECTED_GATEWAY is still a placeholder in .env. Update it before trusting these checks."
+else
+  default_gateway="$(ip route show default 2>/dev/null | awk '/default/ {print $3; exit}')"
+  printf 'Default gateway: %s\n' "${default_gateway:-none detected}"
+  if [[ "$default_gateway" == "$EXPECTED_GATEWAY" ]]; then
+    pass "Default gateway matches ${EXPECTED_GATEWAY}"
+  else
+    warn "Default gateway does not match ${EXPECTED_GATEWAY}"
+  fi
 fi
 
 printf '\n-- DNS query through expected resolver --\n'
@@ -103,25 +167,18 @@ else
   pass "Ping to ${LAN_TEST_TARGET} failed or timed out, which is consistent with LAN isolation"
 fi
 
-printf '\n-- qBittorrent listener check --\n'
-if ss -lntup 2>/dev/null | grep -F ":${WEBUI_PORT:-8080}" >/dev/null 2>&1; then
-  if is_placeholder "$FITLET_IP"; then
-    pass "A process is listening on Web UI port ${WEBUI_PORT:-8080}. Update FITLET_IP in .env to verify the exact bind address."
-  else
-    pass "A process is listening on Web UI port ${WEBUI_PORT:-8080}. Confirm it is bound only to ${FITLET_IP}."
-  fi
-  ss -lntup 2>/dev/null | grep -F ":${WEBUI_PORT:-8080}" || true
-else
-  warn "Nothing appears to be listening on Web UI port ${WEBUI_PORT:-8080}"
-fi
+report_listener_check "qBittorrent Web UI listener check" "$WEBUI_PORT" tcp
+report_listener_check "qBittorrent torrent TCP listener check" "$TORRENTING_PORT" tcp
+report_listener_check "qBittorrent torrent UDP listener check" "$TORRENTING_PORT" udp
 
 printf '\n-- Host-side validation boundary --\n'
 cat <<EOF
 Host-side checks can confirm:
 - The configured resolver on the host
+- The default gateway the host is using
 - Whether direct DNS to 8.8.8.8 appears blocked
 - Whether the current public IP matches the expected VPN exit
-- Whether qBittorrent is listening on the expected IP and ports
+- Whether qBittorrent is listening on the expected IP and ports without wildcard binds
 
 Host-side checks cannot prove:
 - That peer traffic never leaks out WAN
