@@ -26,11 +26,23 @@ docker compose version >/dev/null 2>&1 || die "Docker Compose plugin is required
 runtime_root="$(mktemp -d "${TMPDIR:-/tmp}/fitlet-service-box-ci.XXXXXX")"
 env_file="${runtime_root}/.env.ci"
 project_name="fitlet-ci"
+runtime_uid="$(id -u)"
+runtime_gid="$(id -g)"
 compose_args=(-p "$project_name" --env-file "$env_file" -f "$REPO_DIR/docker-compose.yml")
 
 cleanup() {
   docker compose "${compose_args[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
-  rm -rf "$runtime_root"
+  if rm -rf "$runtime_root" >/dev/null 2>&1; then
+    return
+  fi
+
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    log "Cleanup hit permission issues, retrying with sudo"
+    sudo rm -rf "$runtime_root" >/dev/null 2>&1 || true
+    return
+  fi
+
+  log "Cleanup could not remove ${runtime_root}; manual cleanup may be required"
 }
 
 trap cleanup EXIT
@@ -39,8 +51,8 @@ mkdir -p "${runtime_root}/config" "${runtime_root}/downloads" "${runtime_root}/b
 
 cat >"$env_file" <<EOF
 TZ=Etc/UTC
-PUID=1000
-PGID=1000
+PUID=${runtime_uid}
+PGID=${runtime_gid}
 FITLET_IP=127.0.0.1
 WEBUI_PORT=8080
 TORRENTING_PORT=49152
