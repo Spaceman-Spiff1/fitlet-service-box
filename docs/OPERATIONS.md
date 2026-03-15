@@ -55,6 +55,7 @@ If you use pull requests for this repo, wait for the GitHub Actions checks in `.
 
 Those checks cover:
 - shell linting
+- a GitHub-hosted Docker/image startup smoke test
 - YAML linting
 - Python linting when Python files exist
 - GitHub workflow linting

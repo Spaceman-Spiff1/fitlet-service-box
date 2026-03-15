@@ -37,6 +37,17 @@ jobs:
           fi
           shellcheck "${shell_scripts[@]}"
 
+  docker-smoke-test:
+    name: Docker Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v5
+
+      - name: Run docker/image smoke test
+        run: ./scripts/docker-smoke-test.sh
+
   yamllint:
     name: YAML Lint
     runs-on: ubuntu-latest

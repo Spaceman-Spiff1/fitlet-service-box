@@ -73,6 +73,7 @@ fitlet-service-box/
 |-- scripts/
 |   |-- healthcheck.sh
 |   |-- ci-checks.sh
+|   |-- docker-smoke-test.sh
 |   |-- prepare-usb-bundle.sh
 |   |-- verify-routing.sh
 |   |-- backup-config.sh
@@ -99,13 +100,14 @@ This repo now includes a small GitHub Actions framework in [.github/workflows/ci
 
 It runs:
 - `shellcheck` for the shell scripts
+- a Docker smoke test that pulls the qBittorrent image and starts the real compose stack on GitHub runners
 - `yamllint` for compose, workflow, and config YAML
 - `pylint` for Python files when the repo has any
 - `actionlint` for the GitHub workflow itself
 - `./scripts/ci-checks.sh` for repo-specific smoke checks
 
 Those checks are useful for catching script regressions, stale hardcoded values, and workflow mistakes before merge.
-They do not prove the Fitlet install path, qBittorrent behavior, or OPNsense routing design by themselves.
+They do not prove the full Fitlet install path, your DHCP/firewall assumptions, or the OPNsense routing design by themselves.
 Keep host-side validation and firewall packet captures in the loop.
 
 ## Install

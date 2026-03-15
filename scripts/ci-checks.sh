@@ -49,6 +49,7 @@ required_files=(
   docs/VALIDATION.md
   scripts/backup-config.sh
   scripts/ci-checks.sh
+  scripts/docker-smoke-test.sh
   scripts/healthcheck.sh
   scripts/prepare-usb-bundle.sh
   scripts/update-images.sh
