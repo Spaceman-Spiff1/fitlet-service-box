@@ -45,7 +45,7 @@ load_env_like() {
   fi
 
   set -a
-  # shellcheck disable=SC1091
+  # shellcheck disable=SC1090,SC1091
   source "$env_file"
   set +a
 }

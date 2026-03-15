@@ -30,7 +30,7 @@ ensure_not_present() {
   local pattern="$1"
   local path="$2"
   local description="$3"
-  if grep -R -n -E --exclude-dir=.git --exclude-dir=bundle "$pattern" "$path" >/dev/null 2>&1; then
+  if grep -R -n -E --exclude-dir=.git --exclude-dir=bundle --exclude=ci-checks.sh "$pattern" "$path" >/dev/null 2>&1; then
     die "Found banned content for ${description}: ${pattern}"
   fi
 }
