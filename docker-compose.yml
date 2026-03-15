@@ -15,7 +15,6 @@ services:
       - "${FITLET_IP}:${WEBUI_PORT}:${WEBUI_PORT}"
       - "${FITLET_IP}:${TORRENTING_PORT}:${TORRENTING_PORT}"
       - "${FITLET_IP}:${TORRENTING_PORT}:${TORRENTING_PORT}/udp"
-    init: true
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

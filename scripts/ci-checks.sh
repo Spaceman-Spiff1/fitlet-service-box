@@ -92,7 +92,6 @@ require_pattern 'image: \$\{QBITTORRENT_IMAGE\}' docker-compose.yml 'qBittorrent
 require_pattern '"\$\{FITLET_IP\}:\$\{WEBUI_PORT\}:\$\{WEBUI_PORT\}"' docker-compose.yml 'Web UI bind address'
 require_pattern '"\$\{FITLET_IP\}:\$\{TORRENTING_PORT\}:\$\{TORRENTING_PORT\}"' docker-compose.yml 'torrent TCP bind address'
 require_pattern '"\$\{FITLET_IP\}:\$\{TORRENTING_PORT\}:\$\{TORRENTING_PORT\}/udp"' docker-compose.yml 'torrent UDP bind address'
-require_pattern 'init: true' docker-compose.yml 'tiny init enablement'
 require_pattern 'restart: unless-stopped' docker-compose.yml 'restart policy'
 require_pattern 'no-new-privileges:true' docker-compose.yml 'no-new-privileges'
 
