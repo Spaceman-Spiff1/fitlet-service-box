@@ -1,0 +1,9 @@
+[Unit]
+Description=Check Fitlet torrent box images and log current status
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/fitlet-torrent-box
+ExecStart=/usr/bin/docker compose -f /opt/fitlet-torrent-box/docker-compose.yml images

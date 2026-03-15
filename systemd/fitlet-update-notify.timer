@@ -1,0 +1,10 @@
+[Unit]
+Description=Log Fitlet torrent box image status daily
+
+[Timer]
+OnBootSec=15m
+OnCalendar=daily
+Unit=fitlet-update-notify.service
+
+[Install]
+WantedBy=timers.target

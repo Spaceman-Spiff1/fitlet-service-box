@@ -1,0 +1,22 @@
+services:
+  qbittorrent:
+    image: ${QBITTORRENT_IMAGE}
+    container_name: qbittorrent
+    env_file:
+      - .env
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
+      TZ: ${TZ}
+      WEBUI_PORT: ${WEBUI_PORT}
+      TORRENTING_PORT: ${TORRENTING_PORT}
+    volumes:
+      - ${CONFIG_DIR}:/config
+      - ${DOWNLOADS_DIR}:/downloads
+    ports:
+      - "${FITLET_IP}:${WEBUI_PORT}:${WEBUI_PORT}"
+      - "${FITLET_IP}:${TORRENTING_PORT}:${TORRENTING_PORT}"
+      - "${FITLET_IP}:${TORRENTING_PORT}:${TORRENTING_PORT}/udp"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true

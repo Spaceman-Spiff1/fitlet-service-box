@@ -1,0 +1,9 @@
+[Unit]
+Description=Fitlet torrent box health check
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/fitlet-torrent-box
+ExecStart=/opt/fitlet-torrent-box/scripts/healthcheck.sh
