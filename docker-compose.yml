@@ -2,8 +2,6 @@ services:
   qbittorrent:
     image: ${QBITTORRENT_IMAGE}
     container_name: qbittorrent
-    env_file:
-      - .env
     environment:
       PUID: ${PUID}
       PGID: ${PGID}
